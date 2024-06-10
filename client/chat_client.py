@@ -73,13 +73,22 @@ def receive_messages():
 
 # Function to send FHIR data to the server
 def send_fhir_data(filepath):
+    if not filepath.endswith('.json'):
+        print_message("*** Only JSON FHIR data is accepted", f"{nickname}> ")
+        return
+
     if not os.path.isfile(filepath):
         print_message("*** File does not exist", f"{nickname}> ")
         return
 
     try:
         with open(filepath, 'r') as file:
-            fhir_json = file.read()
+            try:
+                fhir_json = file.read()
+                json.loads(fhir_json)  # Check if JSON is correctly formed
+            except json.JSONDecodeError:
+                print_message("*** Incorrectly formed JSON file", f"{nickname}> ")
+                return
 
         # Validate FHIR data
         try:
