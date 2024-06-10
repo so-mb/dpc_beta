@@ -4,6 +4,7 @@ import socket
 import select
 import sys
 import json
+from fhir_handler import validate_fhir_data
 
 # Constants
 HEADER_LENGTH = 2
@@ -83,13 +84,25 @@ while True:
                 print(f"--- Closed connection from {notified_socket.getpeername()} with username: {user}")
                 continue
 
-            # Broadcast received message to other clients
+            # Process received message
             user = clients[notified_socket]
             message_data = json.loads(message)
-            chat_message = json.dumps({"type": "chat", "nick": user, "message": message_data['message']})
-            for client in clients.keys():
-                if client != notified_socket:
-                    client.send(len(chat_message).to_bytes(HEADER_LENGTH, byteorder='big') + chat_message.encode('utf-8'))
+
+            if message_data['type'] == 'fhir':
+                is_valid, validation_message = validate_fhir_data(message_data['data'])
+                if is_valid:
+                    fhir_message = json.dumps({"type": "fhir", "nick": user, "data": message_data['data']})
+                    for client in clients.keys():
+                        if client != notified_socket:
+                            client.send(len(fhir_message).to_bytes(HEADER_LENGTH, byteorder='big') + fhir_message.encode('utf-8'))
+                else:
+                    error_message = json.dumps({"type": "error", "message": validation_message})
+                    notified_socket.send(len(error_message).to_bytes(HEADER_LENGTH, byteorder='big') + error_message.encode('utf-8'))
+            else:
+                chat_message = json.dumps({"type": "chat", "nick": user, "message": message_data['message']})
+                for client in clients.keys():
+                    if client != notified_socket:
+                        client.send(len(chat_message).to_bytes(HEADER_LENGTH, byteorder='big') + chat_message.encode('utf-8'))
 
     for notified_socket in exception_sockets:
         sockets_list.remove(notified_socket)
