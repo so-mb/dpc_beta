@@ -85,17 +85,20 @@ def send_fhir_data(filepath):
         try:
             patient = Patient.parse_raw(fhir_json)
         except ValidationError as ve:
-            handle_long_message(f"*** Invalid FHIR Data: {ve}", f"{nickname}> ")
+            handle_long_message("*** Invalid FHIR Data", f"{nickname}> ")
+            handle_long_message(str(ve), f"{nickname}> ")
             return
         except Exception as e:
-            handle_long_message(f"*** Invalid FHIR Data: {str(e)}", f"{nickname}> ")
+            handle_long_message("*** Invalid FHIR Data", f"{nickname}> ")
+            handle_long_message(str(e), f"{nickname}> ")
             return
 
         fhir_packet = json.dumps({"type": "fhir", "data": fhir_json})
         client_socket.send(len(fhir_packet).to_bytes(HEADER_LENGTH, byteorder='big') + fhir_packet.encode('utf-8'))
         print_message("*** FHIR data sent successfully", f"{nickname}> ")
     except Exception as e:
-        handle_long_message(f"*** Error sending FHIR data: {str(e)}", f"{nickname}> ")
+        handle_long_message("*** Error sending FHIR data", f"{nickname}> ")
+        handle_long_message(str(e), f"{nickname}> ")
 
 # Function to send messages to the server
 def send_message():
