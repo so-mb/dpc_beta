@@ -12,6 +12,7 @@ from pydantic import ValidationError
 # Constants
 HEADER_LENGTH = 4
 CATEGORIES = ["Doctor", "Nurse", "Patient", "Other"]
+MEDIA_TYPES = ['.jpg', '.jpeg', '.png', '.gif', '.pdf']
 
 # Handle command line arguments
 if len(sys.argv) != 4:
@@ -65,6 +66,8 @@ def receive_messages():
                 print_message(f"*** {message['nick']} has left the chat")
             elif message['type'] == 'fhir':
                 print_message(f"*** Received FHIR data from {message['nick']}. View the data at: {message['data']}", f"{nickname_with_category}> ")
+            elif message['type'] == 'media':
+                print_message(f"*** Received media from {message['nick']}. View the file at: {message['data']}", f"{nickname_with_category}> ")
             elif message['type'] == 'error':
                 print_message(f"*** Error: {message['message']}", f"{nickname_with_category}> ")
         except Exception as e:
@@ -109,6 +112,27 @@ def send_fhir_data(filepath):
         handle_long_message("*** Error sending FHIR data", f"{nickname}> ")
         handle_long_message(str(e), f"{nickname}> ")
 
+# Function to send media files to the server
+def send_media(filepath):
+    if not any(filepath.lower().endswith(ext) for ext in MEDIA_TYPES):
+        print_message("*** Only media files (.jpg, .jpeg, .png, .gif, .pdf) are accepted", f"{nickname}> ")
+        return
+
+    if not os.path.isfile(filepath):
+        print_message("*** File does not exist", f"{nickname}> ")
+        return
+
+    try:
+        with open(filepath, 'rb') as file:
+            media_data = file.read()
+
+        media_packet = json.dumps({"type": "media", "filename": os.path.basename(filepath), "data": media_data.decode('latin1')})
+        client_socket.send(len(media_packet).to_bytes(HEADER_LENGTH, byteorder='big') + media_packet.encode('utf-8'))
+        print_message("*** Media file sent successfully", f"{nickname}> ")
+    except Exception as e:
+        handle_long_message("*** Error sending media file", f"{nickname}> ")
+        handle_long_message(str(e), f"{nickname}> ")
+
 # Function to send messages to the server
 def send_message():
     print_message(f"*** Welcome to the DP Chat. Remember to chat responsibly. You are chatting as << {nickname_with_category} >>", f"{nickname_with_category}> ")
@@ -127,6 +151,10 @@ def send_message():
         elif message.startswith("/send_fhir"):
             filepath = message.split(" ", 1)[1]
             send_fhir_data(filepath)
+            continue
+        elif message.startswith("/send_media"):
+            filepath = message.split(" ", 1)[1]
+            send_media(filepath)
             continue
 
         chat_packet = json.dumps({"type": "chat", "message": message})

@@ -37,20 +37,32 @@ clients = {}
 
 # Directory to store FHIR JSON files
 FHIR_FILES_DIR = "../fhir_files/"
+MEDIA_FILES_DIR = "../media_files/"
 os.makedirs(FHIR_FILES_DIR, exist_ok=True)
+os.makedirs(MEDIA_FILES_DIR, exist_ok=True)
 
 print(f"Server is listening on {local_ip}:{port}")
 
-def save_fhir_data(data):
-    filename = f"{uuid.uuid4()}.json"
-    filepath = os.path.join(FHIR_FILES_DIR, filename)
-    with open(filepath, 'w') as f:
+def save_file(data, filename, dir):
+    filepath = os.path.join(dir, filename)
+    with open(filepath, 'wb') as f:
         f.write(data)
     return filename
 
+class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
+    def translate_path(self, path):
+        # Remove the leading /
+        path = path.lstrip('/')
+        
+        if path.startswith('fhir_files/'):
+            return os.path.join(FHIR_FILES_DIR, path[len('fhir_files/'):])
+        elif path.startswith('media_files/'):
+            return os.path.join(MEDIA_FILES_DIR, path[len('media_files/'):])
+        else:
+            return SimpleHTTPRequestHandler.translate_path(self, path)
+
 def start_http_server():
-    os.chdir(FHIR_FILES_DIR)
-    handler = SimpleHTTPRequestHandler
+    handler = CustomHTTPRequestHandler
     httpd = HTTPServer(('localhost', 8000), handler)
     httpd.serve_forever()
 
@@ -123,8 +135,8 @@ while True:
             if message_data['type'] == 'fhir':
                 is_valid, validation_message = validate_fhir_data(message_data['data'])
                 if is_valid:
-                    filename = save_fhir_data(message_data['data'])
-                    file_url = f"http://localhost:8000/{filename}"
+                    filename = save_file(message_data['data'].encode('utf-8'), f"{uuid.uuid4()}.json", FHIR_FILES_DIR)
+                    file_url = f"http://localhost:8000/fhir_files/{filename}"
                     fhir_message = json.dumps({"type": "fhir", "nick": user, "data": file_url})
                     for client in clients.keys():
                         if client != notified_socket:
@@ -132,6 +144,14 @@ while True:
                 else:
                     error_message = json.dumps({"type": "error", "message": validation_message})
                     notified_socket.send(len(error_message).to_bytes(HEADER_LENGTH, byteorder='big') + error_message.encode('utf-8'))
+            elif message_data['type'] == 'media':
+                media_data = message_data['data'].encode('latin1')
+                filename = save_file(media_data, message_data['filename'], MEDIA_FILES_DIR)
+                file_url = f"http://localhost:8000/media_files/{filename}"
+                media_message = json.dumps({"type": "media", "nick": user, "data": file_url})
+                for client in clients.keys():
+                    if client != notified_socket:
+                        client.send(len(media_message).to_bytes(HEADER_LENGTH, byteorder='big') + media_message.encode('utf-8'))
             else:
                 chat_message = json.dumps({"type": "chat", "nick": user, "message": message_data['message']})
                 for client in clients.keys():
