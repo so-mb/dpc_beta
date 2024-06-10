@@ -7,6 +7,7 @@ import json
 import os
 from chatui import init_windows, read_command, print_message, end_windows
 from fhir.resources.patient import Patient
+from pydantic import ValidationError
 
 # Constants
 HEADER_LENGTH = 4
@@ -81,16 +82,20 @@ def send_fhir_data(filepath):
             fhir_json = file.read()
 
         # Validate FHIR data
-        patient = Patient.parse_raw(fhir_json)
-        if not patient:
-            print_message("*** Invalid FHIR Data", f"{nickname}> ")
+        try:
+            patient = Patient.parse_raw(fhir_json)
+        except ValidationError as ve:
+            handle_long_message(f"*** Invalid FHIR Data: {ve}", f"{nickname}> ")
+            return
+        except Exception as e:
+            handle_long_message(f"*** Invalid FHIR Data: {str(e)}", f"{nickname}> ")
             return
 
         fhir_packet = json.dumps({"type": "fhir", "data": fhir_json})
         client_socket.send(len(fhir_packet).to_bytes(HEADER_LENGTH, byteorder='big') + fhir_packet.encode('utf-8'))
         print_message("*** FHIR data sent successfully", f"{nickname}> ")
     except Exception as e:
-        print_message(f"*** Error sending FHIR data: {str(e)}", f"{nickname}> ")
+        handle_long_message(f"*** Error sending FHIR data: {str(e)}", f"{nickname}> ")
 
 # Function to send messages to the server
 def send_message():
@@ -120,6 +125,32 @@ def send_message():
     client_socket.close()
     end_windows()
     sys.exit(0)
+
+def handle_long_message(message, prompt):
+    max_width = 80  # Adjust based on your terminal's width
+    lines = split_message_to_lines(message, max_width)
+    for line in lines:
+        print_message(line, prompt)
+
+def split_message_to_lines(message, max_width):
+    words = message.split()
+    lines = []
+    current_line = []
+    current_length = 0
+
+    for word in words:
+        if current_length + len(word) + 1 > max_width:
+            lines.append(' '.join(current_line))
+            current_line = [word]
+            current_length = len(word) + 1
+        else:
+            current_line.append(word)
+            current_length += len(word) + 1
+
+    if current_line:
+        lines.append(' '.join(current_line))
+
+    return lines
 
 # Start the receiving thread
 receive_thread = threading.Thread(target=receive_messages)
