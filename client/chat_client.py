@@ -4,7 +4,9 @@ import socket
 import threading
 import sys
 import json
+import os
 from chatui import init_windows, read_command, print_message, end_windows
+from fhir.resources.patient import Patient
 
 # Constants
 HEADER_LENGTH = 2
@@ -60,9 +62,36 @@ def receive_messages():
                 print_message(f"*** {message['nick']} has joined the chat")
             elif message['type'] == 'leave':
                 print_message(f"*** {message['nick']} has left the chat")
+            elif message['type'] == 'fhir':
+                print_message(f"*** Received FHIR data from {message['nick']}", f"{nickname_with_category}> ")
+                print_message(f"FHIR Data: {message['data']}", f"{nickname_with_category}> ")
+            elif message['type'] == 'error':
+                print_message(f"*** Error: {message['message']}", f"{nickname_with_category}> ")
         except:
             print_message("*** Connection to server lost")
             break
+
+# Function to send FHIR data to the server
+def send_fhir_data(filepath):
+    if not os.path.isfile(filepath):
+        print_message("*** File does not exist", f"{nickname}> ")
+        return
+
+    try:
+        with open(filepath, 'r') as file:
+            fhir_json = file.read()
+
+        # Validate FHIR data
+        patient = Patient.parse_raw(fhir_json)
+        if not patient:
+            print_message("*** Invalid FHIR Data", f"{nickname}> ")
+            return
+
+        fhir_packet = json.dumps({"type": "fhir", "data": fhir_json})
+        client_socket.send(len(fhir_packet).to_bytes(HEADER_LENGTH, byteorder='big') + fhir_packet.encode('utf-8'))
+        print_message("*** FHIR data sent successfully", f"{nickname}> ")
+    except Exception as e:
+        print_message(f"*** Error sending FHIR data: {str(e)}", f"{nickname}> ")
 
 # Function to send messages to the server
 def send_message():
@@ -71,7 +100,7 @@ def send_message():
         message = read_command(f"Me> ")
         if message.strip() == "":
             continue
-        if (message == "/quit" or message == "/QUIT"):
+        if message == "/quit" or message == "/QUIT":
             confirmation = read_command("Are you sure you want to quit? [Yes or y / No or n (default)] ")
             if confirmation.lower() in ["yes", "y"]:
                 print("*** Quitting chat")
@@ -79,6 +108,10 @@ def send_message():
             else:
                 print_message("*** DP Chat says 'Quit cancelled.'", f"{nickname}> ")
                 continue
+        elif message.startswith("/send_fhir"):
+            filepath = message.split(" ", 1)[1]
+            send_fhir_data(filepath)
+            continue
 
         chat_packet = json.dumps({"type": "chat", "message": message})
         client_socket.send(len(chat_packet).to_bytes(HEADER_LENGTH, byteorder='big') + chat_packet.encode('utf-8'))
