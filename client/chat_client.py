@@ -8,12 +8,17 @@ import os
 from chatui import init_windows, read_command, print_message, end_windows
 from fhir.resources.patient import Patient
 from pydantic import ValidationError
+from cryptography.fernet import Fernet
 
 # Constants
 HEADER_LENGTH = 4
 CATEGORIES = ["Doctor", "Nurse", "Patient", "Other"]
 MEDIA_TYPES = ['.jpg', '.jpeg', '.png', '.gif', '.pdf']
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+
+# Encryption key (for demonstration, in practice you should handle this more securely)
+ENCRYPTION_KEY = Fernet.generate_key()
+cipher_suite = Fernet(ENCRYPTION_KEY)
 
 # Handle command line arguments
 if len(sys.argv) != 4:
@@ -45,7 +50,7 @@ client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client_socket.connect((server_address, port))
 
 # Send initial "hello" packet
-hello_packet = json.dumps({"type": "hello", "nick": nickname_with_category})
+hello_packet = json.dumps({"type": "hello", "nick": nickname_with_category, "encryption_key": ENCRYPTION_KEY.decode()})
 client_socket.send(len(hello_packet).to_bytes(HEADER_LENGTH, byteorder='big') + hello_packet.encode('utf-8'))
 
 # Function to receive messages from the server
@@ -110,7 +115,8 @@ def send_fhir_data(filepath):
             handle_long_message(str(e), f"{nickname}> ")
             return
 
-        fhir_packet = json.dumps({"type": "fhir", "data": fhir_json})
+        encrypted_fhir = cipher_suite.encrypt(fhir_json.encode())
+        fhir_packet = json.dumps({"type": "fhir", "data": encrypted_fhir.decode()})
         client_socket.send(len(fhir_packet).to_bytes(HEADER_LENGTH, byteorder='big') + fhir_packet.encode('utf-8'))
         print_message("*** FHIR data sent successfully", f"{nickname}> ")
     except Exception as e:
@@ -135,7 +141,8 @@ def send_media(filepath):
         with open(filepath, 'rb') as file:
             media_data = file.read()
 
-        media_packet = json.dumps({"type": "media", "filename": os.path.basename(filepath), "data": media_data.decode('latin1')})
+        encrypted_media = cipher_suite.encrypt(media_data)
+        media_packet = json.dumps({"type": "media", "filename": os.path.basename(filepath), "data": encrypted_media.decode('latin1')})
         client_socket.send(len(media_packet).to_bytes(HEADER_LENGTH, byteorder='big') + media_packet.encode('utf-8'))
         print_message("*** Media file sent successfully", f"{nickname}> ")
     except Exception as e:

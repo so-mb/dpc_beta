@@ -9,6 +9,7 @@ import uuid
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 import threading
 from fhir_handler import validate_fhir_data
+from cryptography.fernet import Fernet
 
 # Constants
 HEADER_LENGTH = 4
@@ -34,6 +35,7 @@ server_socket.listen()
 # List of sockets to monitor with select
 sockets_list = [server_socket]
 clients = {}
+encryption_keys = {}
 
 # Directory to store FHIR JSON files
 FHIR_FILES_DIR = "../fhir_files/"
@@ -100,7 +102,11 @@ while True:
             if user_data is False:
                 continue
             
-            user = json.loads(user_data)['nick']
+            user_info = json.loads(user_data)
+            user = user_info['nick']
+            encryption_key = user_info['encryption_key'].encode()
+            encryption_keys[client_socket] = encryption_key
+            cipher_suite = Fernet(encryption_key)
             sockets_list.append(client_socket)
             clients[client_socket] = user
 
@@ -119,6 +125,7 @@ while True:
                 user = clients[notified_socket]
                 sockets_list.remove(notified_socket)
                 del clients[notified_socket]
+                del encryption_keys[notified_socket]
 
                 # Broadcast leave message
                 leave_message = json.dumps({"type": "leave", "nick": user})
@@ -131,11 +138,13 @@ while True:
             # Process received message
             user = clients[notified_socket]
             message_data = json.loads(message)
+            cipher_suite = Fernet(encryption_keys[notified_socket])
 
             if message_data['type'] == 'fhir':
-                is_valid, validation_message = validate_fhir_data(message_data['data'])
+                decrypted_fhir = cipher_suite.decrypt(message_data['data'].encode())
+                is_valid, validation_message = validate_fhir_data(decrypted_fhir.decode())
                 if is_valid:
-                    filename = save_file(message_data['data'].encode('utf-8'), f"{uuid.uuid4()}.json", FHIR_FILES_DIR)
+                    filename = save_file(decrypted_fhir, f"{uuid.uuid4()}.json", FHIR_FILES_DIR)
                     file_url = f"http://localhost:8000/fhir_files/{filename}"
                     fhir_message = json.dumps({"type": "fhir", "nick": user, "data": file_url})
                     for client in clients.keys():
@@ -145,8 +154,8 @@ while True:
                     error_message = json.dumps({"type": "error", "message": validation_message})
                     notified_socket.send(len(error_message).to_bytes(HEADER_LENGTH, byteorder='big') + error_message.encode('utf-8'))
             elif message_data['type'] == 'media':
-                media_data = message_data['data'].encode('latin1')
-                filename = save_file(media_data, message_data['filename'], MEDIA_FILES_DIR)
+                decrypted_media = cipher_suite.decrypt(message_data['data'].encode('latin1'))
+                filename = save_file(decrypted_media, message_data['filename'], MEDIA_FILES_DIR)
                 file_url = f"http://localhost:8000/media_files/{filename}"
                 media_message = json.dumps({"type": "media", "nick": user, "data": file_url})
                 for client in clients.keys():
@@ -161,3 +170,4 @@ while True:
     for notified_socket in exception_sockets:
         sockets_list.remove(notified_socket)
         del clients[notified_socket]
+        del encryption_keys[notified_socket]
