@@ -133,6 +133,17 @@ def send_media(filepath):
         handle_long_message("*** Error sending media file", f"{nickname}> ")
         handle_long_message(str(e), f"{nickname}> ")
 
+# Function to display help
+def display_help():
+    help_message = """
+Available commands:
+  /send_fhir <file_path>  : Send FHIR data as a JSON file.
+  /send_media <file_path> : Send media files (e.g., .jpg, .jpeg, .png, .gif, .pdf).
+  /quit                   : Quit the chat.
+  /help                   : Display this help message.
+"""
+    handle_long_message(help_message, f"{nickname}> ")
+
 # Function to send messages to the server
 def send_message():
     print_message(f"*** Welcome to the DP Chat. Remember to chat responsibly. You are chatting as << {nickname_with_category} >>", f"{nickname_with_category}> ")
@@ -148,6 +159,9 @@ def send_message():
             else:
                 print_message("*** DP Chat says 'Quit cancelled.'", f"{nickname}> ")
                 continue
+        elif message == "/help":
+            display_help()
+            continue
         elif message.startswith("/send_fhir"):
             filepath = message.split(" ", 1)[1]
             send_fhir_data(filepath)
