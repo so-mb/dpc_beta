@@ -9,7 +9,7 @@ from chatui import init_windows, read_command, print_message, end_windows
 from fhir.resources.patient import Patient
 
 # Constants
-HEADER_LENGTH = 2
+HEADER_LENGTH = 4
 CATEGORIES = ["Doctor", "Nurse", "Patient", "Other"]
 
 # Handle command line arguments
@@ -63,12 +63,11 @@ def receive_messages():
             elif message['type'] == 'leave':
                 print_message(f"*** {message['nick']} has left the chat")
             elif message['type'] == 'fhir':
-                print_message(f"*** Received FHIR data from {message['nick']}", f"{nickname_with_category}> ")
-                print_message(f"FHIR Data: {message['data']}", f"{nickname_with_category}> ")
+                print_message(f"*** Received FHIR data from {message['nick']}. View the data at: {message['data']}", f"{nickname_with_category}> ")
             elif message['type'] == 'error':
                 print_message(f"*** Error: {message['message']}", f"{nickname_with_category}> ")
-        except:
-            print_message("*** Connection to server lost")
+        except Exception as e:
+            print_message(f"*** Connection to server lost: {e}")
             break
 
 # Function to send FHIR data to the server

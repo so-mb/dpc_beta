@@ -4,10 +4,14 @@ import socket
 import select
 import sys
 import json
+import os
+import uuid
+from http.server import SimpleHTTPRequestHandler, HTTPServer
+import threading
 from fhir_handler import validate_fhir_data
 
 # Constants
-HEADER_LENGTH = 2
+HEADER_LENGTH = 4
 
 # Handle command line arguments
 if len(sys.argv) != 2:
@@ -31,7 +35,28 @@ server_socket.listen()
 sockets_list = [server_socket]
 clients = {}
 
+# Directory to store FHIR JSON files
+FHIR_FILES_DIR = "../fhir_files/"
+os.makedirs(FHIR_FILES_DIR, exist_ok=True)
+
 print(f"Server is listening on {local_ip}:{port}")
+
+def save_fhir_data(data):
+    filename = f"{uuid.uuid4()}.json"
+    filepath = os.path.join(FHIR_FILES_DIR, filename)
+    with open(filepath, 'w') as f:
+        f.write(data)
+    return filename
+
+def start_http_server():
+    os.chdir(FHIR_FILES_DIR)
+    handler = SimpleHTTPRequestHandler
+    httpd = HTTPServer(('localhost', 8000), handler)
+    httpd.serve_forever()
+
+http_server_thread = threading.Thread(target=start_http_server)
+http_server_thread.daemon = True
+http_server_thread.start()
 
 # Function to handle receiving data from clients
 def receive_data(client_socket):
@@ -40,8 +65,15 @@ def receive_data(client_socket):
         if not len(data):
             return False
         data_length = int.from_bytes(data, byteorder='big')
-        return client_socket.recv(data_length).decode('utf-8')
-    except:
+        data = b""
+        while len(data) < data_length:
+            packet = client_socket.recv(data_length - len(data))
+            if not packet:
+                return False
+            data += packet
+        return data.decode('utf-8')
+    except Exception as e:
+        print(f"Error receiving data: {e}")
         return False
 
 # Main server loop
@@ -91,7 +123,9 @@ while True:
             if message_data['type'] == 'fhir':
                 is_valid, validation_message = validate_fhir_data(message_data['data'])
                 if is_valid:
-                    fhir_message = json.dumps({"type": "fhir", "nick": user, "data": message_data['data']})
+                    filename = save_fhir_data(message_data['data'])
+                    file_url = f"http://localhost:8000/{filename}"
+                    fhir_message = json.dumps({"type": "fhir", "nick": user, "data": file_url})
                     for client in clients.keys():
                         if client != notified_socket:
                             client.send(len(fhir_message).to_bytes(HEADER_LENGTH, byteorder='big') + fhir_message.encode('utf-8'))
