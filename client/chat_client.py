@@ -13,6 +13,7 @@ from pydantic import ValidationError
 HEADER_LENGTH = 4
 CATEGORIES = ["Doctor", "Nurse", "Patient", "Other"]
 MEDIA_TYPES = ['.jpg', '.jpeg', '.png', '.gif', '.pdf']
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 # Handle command line arguments
 if len(sys.argv) != 4:
@@ -84,6 +85,10 @@ def send_fhir_data(filepath):
         print_message("*** File does not exist", f"{nickname}> ")
         return
 
+    if os.path.getsize(filepath) > MAX_FILE_SIZE:
+        print_message("*** File size exceeds the 5MB limit", f"{nickname}> ")
+        return
+
     try:
         with open(filepath, 'r') as file:
             try:
@@ -120,6 +125,10 @@ def send_media(filepath):
 
     if not os.path.isfile(filepath):
         print_message("*** File does not exist", f"{nickname}> ")
+        return
+
+    if os.path.getsize(filepath) > MAX_FILE_SIZE:
+        print_message("*** File size exceeds the 5MB limit", f"{nickname}> ")
         return
 
     try:
