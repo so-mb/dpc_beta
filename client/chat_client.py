@@ -17,7 +17,7 @@ CATEGORIES = ["Doctor", "Nurse", "Patient", "Other"]
 MEDIA_TYPES = ['.jpg', '.jpeg', '.png', '.gif', '.pdf']
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
-# Encryption key (for demonstration, in practice you should handle this more securely)
+# Encryption key (for demonstration, in practice would handle this more securely)
 ENCRYPTION_KEY = Fernet.generate_key()
 cipher_suite = Fernet(ENCRYPTION_KEY)
 
@@ -87,7 +87,7 @@ def receive_messages():
             break
 
 # Function to send FHIR data to the server
-def send_fhir_data(filepath):
+def send_fhir_data(filepath, target_nick=None):
     if not filepath.endswith('.json'):
         print_message("*** Only JSON FHIR data is accepted", f"{nickname}> ")
         return
@@ -122,15 +122,18 @@ def send_fhir_data(filepath):
             return
 
         encrypted_fhir = cipher_suite.encrypt(fhir_json.encode())
-        fhir_packet = json.dumps({"type": "fhir", "data": encrypted_fhir.decode()})
+        fhir_packet = json.dumps({"type": "fhir", "data": encrypted_fhir.decode(), "target": target_nick})
         client_socket.send(len(fhir_packet).to_bytes(HEADER_LENGTH, byteorder='big') + fhir_packet.encode('utf-8'))
-        print_message("*** FHIR data sent successfully", f"{nickname}> ")
+        if target_nick:
+            print_message(f"*** FHIR data sent to {target_nick} successfully", f"{nickname}> ")
+        else:
+            print_message("*** FHIR data sent successfully", f"{nickname}> ")
     except Exception as e:
         handle_long_message("*** Error sending FHIR data", f"{nickname}> ")
         handle_long_message(str(e), f"{nickname}> ")
 
 # Function to send media files to the server
-def send_media(filepath):
+def send_media(filepath, target_nick=None):
     if not any(filepath.lower().endswith(ext) for ext in MEDIA_TYPES):
         print_message("*** Only media files (.jpg, .jpeg, .png, .gif, .pdf) are accepted", f"{nickname}> ")
         return
@@ -148,9 +151,12 @@ def send_media(filepath):
             media_data = file.read()
 
         encrypted_media = cipher_suite.encrypt(media_data)
-        media_packet = json.dumps({"type": "media", "filename": os.path.basename(filepath), "data": encrypted_media.decode('latin1')})
+        media_packet = json.dumps({"type": "media", "filename": os.path.basename(filepath), "data": encrypted_media.decode('latin1'), "target": target_nick})
         client_socket.send(len(media_packet).to_bytes(HEADER_LENGTH, byteorder='big') + media_packet.encode('utf-8'))
-        print_message("*** Media file sent successfully", f"{nickname}> ")
+        if target_nick:
+            print_message(f"*** Media file sent to {target_nick} successfully", f"{nickname}> ")
+        else:
+            print_message("*** Media file sent successfully", f"{nickname}> ")
     except Exception as e:
         handle_long_message("*** Error sending media file", f"{nickname}> ")
         handle_long_message(str(e), f"{nickname}> ")
@@ -160,8 +166,10 @@ def display_help():
     help_message = """
 Available commands:
   /send_fhir <file_path>         : Send FHIR data as a JSON file.
+  /send_fhir="<nickname>" <file_path> : Send FHIR data to a specific user.
   /send_media <file_path>        : Send media files (e.g., .jpg, .jpeg, .png, .gif, .pdf).
-  /send_private="<display name>" <message> : Send a private message to a specific user.
+  /send_media="<nickname>" <file_path> : Send media file to a specific user.
+  /send_private="<nickname>" <msg> : Send a private message to a specific user.
   /quit                          : Quit the chat.
   /help                          : Display this help message.
 """
@@ -185,18 +193,36 @@ def send_message():
         elif message == "/help":
             display_help()
             continue
-        elif message.startswith("/send_fhir"):
+        elif message.startswith("/send_fhir="):
+            match = re.match(r'/send_fhir=["\'](.+?)["\'] (.+)', message)
+            if not match:
+                print_message("*** Invalid FHIR send format. Use /send_fhir=\"<nickname>\" <file_path>", f"{nickname}> ")
+                continue
+            target_nick = match.group(1)
+            filepath = match.group(2)
+            send_fhir_data(filepath, target_nick)
+            continue
+        elif message.startswith("/send_fhir "):
             filepath = message.split(" ", 1)[1]
             send_fhir_data(filepath)
             continue
-        elif message.startswith("/send_media"):
+        elif message.startswith("/send_media="):
+            match = re.match(r'/send_media=["\'](.+?)["\'] (.+)', message)
+            if not match:
+                print_message("*** Invalid media send format. Use /send_media=\"<nickname>\" <file_path>", f"{nickname}> ")
+                continue
+            target_nick = match.group(1)
+            filepath = match.group(2)
+            send_media(filepath, target_nick)
+            continue
+        elif message.startswith("/send_media "):
             filepath = message.split(" ", 1)[1]
             send_media(filepath)
             continue
         elif message.startswith("/send_private="):
             match = re.match(r'/send_private=["\'](.+?)["\'] (.+)', message)
             if not match:
-                print_message("*** Invalid private message format. Use /send_private=\"<display name>\" <message>", f"{nickname}> ")
+                print_message("*** Invalid private message format. Use /send_private=\"<nickname>\" <message>", f"{nickname}> ")
                 continue
             target_nick = match.group(1)
             private_message = match.group(2)

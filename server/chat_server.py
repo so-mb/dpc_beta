@@ -9,7 +9,7 @@ import uuid
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 import threading
 from fhir_handler import validate_fhir_data
-from cryptography.fernet import Fernet  # type: ignore
+from cryptography.fernet import Fernet # type: ignore
 
 # Constants
 HEADER_LENGTH = 4
@@ -165,9 +165,20 @@ while True:
                     filename = save_file(decrypted_fhir, f"{uuid.uuid4()}.json", FHIR_FILES_DIR)
                     file_url = f"http://localhost:8000/fhir_files/{filename}"
                     fhir_message = json.dumps({"type": "fhir", "nick": user, "data": file_url})
-                    for client in clients.keys():
-                        if client != notified_socket:
-                            client.send(len(fhir_message).to_bytes(HEADER_LENGTH, byteorder='big') + fhir_message.encode('utf-8'))
+                    if message_data.get('target'):
+                        found = False
+                        for client_socket, nickname in clients.items():
+                            if nickname.lower() == message_data['target'].lower():
+                                client_socket.send(len(fhir_message).to_bytes(HEADER_LENGTH, byteorder='big') + fhir_message.encode('utf-8'))
+                                found = True
+                                break
+                        if not found:
+                            error_message = json.dumps({"type": "error", "message": f"User '{message_data['target']}' not found"})
+                            notified_socket.send(len(error_message).to_bytes(HEADER_LENGTH, byteorder='big') + error_message.encode('utf-8'))
+                    else:
+                        for client in clients.keys():
+                            if client != notified_socket:
+                                client.send(len(fhir_message).to_bytes(HEADER_LENGTH, byteorder='big') + fhir_message.encode('utf-8'))
                 else:
                     error_message = json.dumps({"type": "error", "message": validation_message})
                     notified_socket.send(len(error_message).to_bytes(HEADER_LENGTH, byteorder='big') + error_message.encode('utf-8'))
@@ -176,9 +187,20 @@ while True:
                 filename = save_file(decrypted_media, message_data['filename'], MEDIA_FILES_DIR)
                 file_url = f"http://localhost:8000/media_files/{filename}"
                 media_message = json.dumps({"type": "media", "nick": user, "data": file_url})
-                for client in clients.keys():
-                    if client != notified_socket:
-                        client.send(len(media_message).to_bytes(HEADER_LENGTH, byteorder='big') + media_message.encode('utf-8'))
+                if message_data.get('target'):
+                    found = False
+                    for client_socket, nickname in clients.items():
+                        if nickname.lower() == message_data['target'].lower():
+                            client_socket.send(len(media_message).to_bytes(HEADER_LENGTH, byteorder='big') + media_message.encode('utf-8'))
+                            found = True
+                            break
+                    if not found:
+                        error_message = json.dumps({"type": "error", "message": f"User '{message_data['target']}' not found"})
+                        notified_socket.send(len(error_message).to_bytes(HEADER_LENGTH, byteorder='big') + error_message.encode('utf-8'))
+                else:
+                    for client in clients.keys():
+                        if client != notified_socket:
+                            client.send(len(media_message).to_bytes(HEADER_LENGTH, byteorder='big') + media_message.encode('utf-8'))
             elif message_data['type'] == 'private':
                 target_nick = message_data['target']
                 private_message = message_data['message']
