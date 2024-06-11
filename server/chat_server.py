@@ -9,7 +9,7 @@ import uuid
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 import threading
 from fhir_handler import validate_fhir_data
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet  # type: ignore
 
 # Constants
 HEADER_LENGTH = 4

@@ -1,7 +1,7 @@
 # FHIR HANDLER
 
-from fhir.resources.patient import Patient
-from pydantic import ValidationError
+from fhir.resources.patient import Patient # type: ignore
+from pydantic import ValidationError # type: ignore
 
 def validate_fhir_data(data):
     try:

@@ -7,9 +7,9 @@ import json
 import os
 import re
 from chatui import init_windows, read_command, print_message, end_windows
-from fhir.resources.patient import Patient
-from pydantic import ValidationError
-from cryptography.fernet import Fernet
+from fhir.resources.patient import Patient # type: ignore
+from pydantic import ValidationError # type: ignore
+from cryptography.fernet import Fernet # type: ignore
 
 # Constants
 HEADER_LENGTH = 4
