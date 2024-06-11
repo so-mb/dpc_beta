@@ -5,6 +5,7 @@ import threading
 import sys
 import json
 import os
+import re
 from chatui import init_windows, read_command, print_message, end_windows
 from fhir.resources.patient import Patient
 from pydantic import ValidationError
@@ -50,11 +51,12 @@ client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client_socket.connect((server_address, port))
 
 # Send initial "hello" packet
-hello_packet = json.dumps({"type": "hello", "nick": nickname_with_category, "encryption_key": ENCRYPTION_KEY.decode()})
+hello_packet = json.dumps({"type": "hello", "nick": nickname, "category": category, "encryption_key": ENCRYPTION_KEY.decode()})
 client_socket.send(len(hello_packet).to_bytes(HEADER_LENGTH, byteorder='big') + hello_packet.encode('utf-8'))
 
 # Function to receive messages from the server
 def receive_messages():
+    global nickname_with_category
     while True:
         try:
             data_length = int.from_bytes(client_socket.recv(HEADER_LENGTH), byteorder='big')
@@ -66,6 +68,8 @@ def receive_messages():
                     print_message(f"Me: {message['message']}")
                 else:
                     print_message(f"{message['nick']}: {message['message']}")
+            elif message['type'] == 'private':
+                print_message(f"*** Private message from {message['nick']}: {message['message']}", f"{nickname_with_category}> ")
             elif message['type'] == 'join':
                 print_message(f"*** {message['nick']} has joined the chat")
             elif message['type'] == 'leave':
@@ -76,6 +80,8 @@ def receive_messages():
                 print_message(f"*** Received media from {message['nick']}. View the file at: {message['data']}", f"{nickname_with_category}> ")
             elif message['type'] == 'error':
                 print_message(f"*** Error: {message['message']}", f"{nickname_with_category}> ")
+            elif message['type'] == 'update_nick':
+                nickname_with_category = message['nick']
         except Exception as e:
             print_message(f"*** Connection to server lost: {e}")
             break
@@ -153,10 +159,11 @@ def send_media(filepath):
 def display_help():
     help_message = """
 Available commands:
-  /send_fhir <file_path>  : Send FHIR data as a JSON file.
-  /send_media <file_path> : Send media files (e.g., .jpg, .jpeg, .png, .gif, .pdf).
-  /quit                   : Quit the chat.
-  /help                   : Display this help message.
+  /send_fhir <file_path>         : Send FHIR data as a JSON file.
+  /send_media <file_path>        : Send media files (e.g., .jpg, .jpeg, .png, .gif, .pdf).
+  /send_private="<display name>" <message> : Send a private message to a specific user.
+  /quit                          : Quit the chat.
+  /help                          : Display this help message.
 """
     handle_long_message(help_message, f"{nickname}> ")
 
@@ -185,6 +192,17 @@ def send_message():
         elif message.startswith("/send_media"):
             filepath = message.split(" ", 1)[1]
             send_media(filepath)
+            continue
+        elif message.startswith("/send_private="):
+            match = re.match(r'/send_private=["\'](.+?)["\'] (.+)', message)
+            if not match:
+                print_message("*** Invalid private message format. Use /send_private=\"<display name>\" <message>", f"{nickname}> ")
+                continue
+            target_nick = match.group(1)
+            private_message = match.group(2)
+            private_packet = json.dumps({"type": "private", "target": target_nick, "message": private_message})
+            client_socket.send(len(private_packet).to_bytes(HEADER_LENGTH, byteorder='big') + private_packet.encode('utf-8'))
+            print_message(f"Me to {target_nick}: {private_message}")
             continue
 
         chat_packet = json.dumps({"type": "chat", "message": message})

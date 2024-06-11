@@ -36,6 +36,7 @@ server_socket.listen()
 sockets_list = [server_socket]
 clients = {}
 encryption_keys = {}
+nicknames = {}
 
 # Directory to store FHIR JSON files
 FHIR_FILES_DIR = "../fhir_files/"
@@ -72,6 +73,15 @@ http_server_thread = threading.Thread(target=start_http_server)
 http_server_thread.daemon = True
 http_server_thread.start()
 
+def get_unique_nickname(nick, category):
+    base_nick = f"{nick} ({category})"
+    unique_nick = base_nick
+    count = 1
+    while unique_nick.lower() in (name.lower() for name in clients.values()):
+        unique_nick = f"{base_nick}{count}"
+        count += 1
+    return unique_nick
+
 # Function to handle receiving data from clients
 def receive_data(client_socket):
     try:
@@ -103,20 +113,27 @@ while True:
                 continue
             
             user_info = json.loads(user_data)
-            user = user_info['nick']
+            nick = user_info['nick']
+            category = user_info['category']
+            unique_nick = get_unique_nickname(nick, category)
+            nicknames[client_socket] = unique_nick
             encryption_key = user_info['encryption_key'].encode()
             encryption_keys[client_socket] = encryption_key
             cipher_suite = Fernet(encryption_key)
             sockets_list.append(client_socket)
-            clients[client_socket] = user
+            clients[client_socket] = unique_nick
+
+            # Inform the client of their unique nickname
+            update_nick_message = json.dumps({"type": "update_nick", "nick": unique_nick})
+            client_socket.send(len(update_nick_message).to_bytes(HEADER_LENGTH, byteorder='big') + update_nick_message.encode('utf-8'))
 
             # Broadcast join message
-            join_message = json.dumps({"type": "join", "nick": user})
+            join_message = json.dumps({"type": "join", "nick": unique_nick})
             for client in clients.keys():
                 if client != client_socket:
                     client.send(len(join_message).to_bytes(HEADER_LENGTH, byteorder='big') + join_message.encode('utf-8'))
             
-            print(f"+++ Accepted new connection from {client_address[0]}:{client_address[1]} with username: {user}")
+            print(f"+++ Accepted new connection from {client_address[0]}:{client_address[1]} with username: {unique_nick}")
 
         else:
             message = receive_data(notified_socket)
@@ -126,6 +143,7 @@ while True:
                 sockets_list.remove(notified_socket)
                 del clients[notified_socket]
                 del encryption_keys[notified_socket]
+                del nicknames[notified_socket]
 
                 # Broadcast leave message
                 leave_message = json.dumps({"type": "leave", "nick": user})
@@ -161,6 +179,19 @@ while True:
                 for client in clients.keys():
                     if client != notified_socket:
                         client.send(len(media_message).to_bytes(HEADER_LENGTH, byteorder='big') + media_message.encode('utf-8'))
+            elif message_data['type'] == 'private':
+                target_nick = message_data['target']
+                private_message = message_data['message']
+                found = False
+                for client_socket, nickname in clients.items():
+                    if nickname.lower() == target_nick.lower():
+                        private_packet = json.dumps({"type": "private", "nick": user, "message": private_message})
+                        client_socket.send(len(private_packet).to_bytes(HEADER_LENGTH, byteorder='big') + private_packet.encode('utf-8'))
+                        found = True
+                        break
+                if not found:
+                    error_message = json.dumps({"type": "error", "message": f"User '{target_nick}' not found"})
+                    notified_socket.send(len(error_message).to_bytes(HEADER_LENGTH, byteorder='big') + error_message.encode('utf-8'))
             else:
                 chat_message = json.dumps({"type": "chat", "nick": user, "message": message_data['message']})
                 for client in clients.keys():
@@ -171,3 +202,4 @@ while True:
         sockets_list.remove(notified_socket)
         del clients[notified_socket]
         del encryption_keys[notified_socket]
+        del nicknames[notified_socket]
