@@ -39,8 +39,8 @@ encryption_keys = {}
 nicknames = {}
 
 # Directory to store FHIR JSON files
-FHIR_FILES_DIR = "../fhir_files/"
-MEDIA_FILES_DIR = "../media_files/"
+FHIR_FILES_DIR = "./rendered_files/rendered_fhir_files/"
+MEDIA_FILES_DIR = "./rendered_files/rendered_media_files/"
 os.makedirs(FHIR_FILES_DIR, exist_ok=True)
 os.makedirs(MEDIA_FILES_DIR, exist_ok=True)
 
